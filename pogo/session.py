@@ -27,6 +27,7 @@ from POGOProtos.Networking.Requests.Messages import(
 # Load Local
 from pogo.inventory import items
 from pogo.session_bare import PogoSessionBare
+import time
 
 
 class PogoSession(PogoSessionBare):
@@ -114,6 +115,7 @@ class PogoSession(PogoSessionBare):
         # Parse
         self._state.fortSearch.ParseFromString(res.returns[0])
 
+
         # Return everything
         return self._state.fortSearch
 
@@ -155,7 +157,6 @@ class PogoSession(PogoSessionBare):
 
         # Send
         res = self.wrapAndRequest(payload)
-
         # Parse
         self._state.encounter.ParseFromString(res.returns[0])
 
@@ -188,7 +189,7 @@ class PogoSession(PogoSessionBare):
 
         # Parse
         self._state.catch.ParseFromString(res.returns[0])
-
+        time.sleep(5)
         # Return everything
         return self._state.catch
 

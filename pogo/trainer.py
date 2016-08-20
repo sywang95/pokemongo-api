@@ -1,5 +1,6 @@
 import logging
 import time
+import random
 
 from pogo.custom_exceptions import GeneralPogoException
 from pogo.location import Location
@@ -16,6 +17,8 @@ class Trainer(object):
     def __init__(self, auth, session):
         self._auth = auth
         self._session = session
+        self.direction = 1
+        self.lastFort = 0
 
     @property
     def auth(self):
@@ -35,6 +38,27 @@ class Trainer(object):
     def checkInventory(self):
         logging.info("Checking Inventory:")
         logging.info(self.session.inventory)
+        crap = 101, 102, 201, 701
+        if len(self.session.checkInventory()) > 200:
+            for item in crap:
+                self.session.recycleItem(item, 15)
+
+    def catchAllPokemon(self, findFort=True):
+        # Get Map details and print pokemon
+        logging.info("Finding Nearby Pokemon:")
+        cells = self.session.getMapObjects(bothDirections=False)
+        best = -1
+        latitude, longitude, _ = self.session.getCoordinates()
+
+        for cell in cells.map_cells:
+            # Heap in pokemon protos where we have long + lat
+            pokemons = [p for p in cell.catchable_pokemons]
+            for pokemon in pokemons:
+                self.encounterAndCatch(pokemon)
+
+    def pythagorean(self, lat1, lat2, lon1, lon2):
+        a = pow(lat1 - lat2, 2) + pow(lon1 - lon2, 2)
+        return a
 
     # Grab the nearest pokemon details
     def findBestPokemon(self):
@@ -50,7 +74,7 @@ class Trainer(object):
         for cell in cells.map_cells:
             # Heap in pokemon protos where we have long + lat
             pokemons = [p for p in cell.wild_pokemons]
-            pokemons += [p for p in cell.catchable_pokemons]
+            #pokemons += [p for p in cell.catchable_pokemons]
             for pokemon in pokemons:
                 # Normalize the ID from different protos
                 pokemonId = getattr(pokemon, "pokemon_id", None)
@@ -88,6 +112,7 @@ class Trainer(object):
     def encounterAndCatch(self, pokemon, thresholdP=0.5, limit=5, delay=2):
         # Start encounter
         encounter = self.session.encounterPokemon(pokemon)
+        print encounter
 
         # If party full
         if encounter.status == encounter.POKEMON_INVENTORY_FULL:
@@ -103,14 +128,13 @@ class Trainer(object):
         # Have we used a razz berry yet?
         berried = False
 
-        # Make sure we aren't oer limit
+        # Make sure we aren't over limit
         count = 0
 
         # Attempt catch
         while True:
             bestBall = items.UNKNOWN
             altBall = items.UNKNOWN
-
             # Check for balls and see if we pass
             # wanted threshold
             for i, ball in enumerate(balls):
@@ -119,7 +143,6 @@ class Trainer(object):
                     if chances[i] > thresholdP:
                         bestBall = ball
                         break
-
             # If we can't determine a ball, try a berry
             # or use a lower class ball
             if bestBall == items.UNKNOWN:
@@ -139,8 +162,6 @@ class Trainer(object):
             # Try to catch it!!
             logging.info("Using a %s", items[bestBall])
             attempt = self.session.catchPokemon(pokemon, bestBall)
-            time.sleep(delay)
-
             # Success or run away
             if attempt.status == 1:
                 return attempt
@@ -159,8 +180,7 @@ class Trainer(object):
                 logging.info("Over catch limit")
                 return None
 
-    # Walk over to position in meters
-    def walkTo(self, olatitude, olongitude, epsilon=10, step=7.5, delay=10):
+    def walk(self, olatitude, olongitude, epsilon=12, step=10, delay=10, findFort=True):
         if step >= epsilon:
             raise GeneralPogoException("Walk may never converge")
 
@@ -189,17 +209,19 @@ class Trainer(object):
 
         # Approach at supplied rate
         steps = 1
+        print("dist is " + str(dist))
         while dist > epsilon:
             logging.debug("%f m -> %f m away", closest - dist, closest)
             latitude -= dLat
             longitude -= dLon
+            print ("At %f, %f" % (latitude, longitude))
             steps %= delay
             if steps == 0:
                 self.session.setCoordinates(
                     latitude,
                     longitude
                 )
-            time.sleep(1)
+            time.sleep(2)
             dist = Location.getDistance(
                 latitude,
                 longitude,
@@ -216,6 +238,155 @@ class Trainer(object):
                 latitude,
                 longitude
             )
+        if random.random() < .05:
+            self.setEggs()
+            self.cleanInventory()
+            self.cleanPokemon(thresholdCP=1000)
+        time.sleep(6)
+
+    # Walk over to position in meters
+    def walkTo(self, olatitude, olongitude, epsilon=12, step=10, delay=10, findFort=True):
+        if step >= epsilon:
+            raise GeneralPogoException("Walk may never converge")
+
+        if self.session.location.noop:
+            raise GeneralPogoException("Location not set")
+
+        # Calculate distance to position
+        latitude, longitude, _ = self.session.getCoordinates()
+        dist = closest = Location.getDistance(
+            latitude,
+            longitude,
+            olatitude,
+            olongitude
+        )
+
+        # Run walk
+        divisions = closest / step
+        dLat = (latitude - olatitude) / divisions
+        dLon = (longitude - olongitude) / divisions
+
+        logging.info(
+            "Walking %f meters. This will take ~%f seconds...",
+            dist,
+            dist / step
+        )
+
+        # Approach at supplied rate
+        steps = 1
+        print("dist is " + str(dist))
+        while dist > epsilon:
+            logging.debug("%f m -> %f m away", closest - dist, closest)
+            latitude -= dLat
+            longitude -= dLon
+            print ("At %f, %f" % (latitude, longitude))
+            steps %= delay
+            if steps == 0:
+                self.session.setCoordinates(
+                    latitude,
+                    longitude
+                )
+            time.sleep(2)
+            dist = Location.getDistance(
+                latitude,
+                longitude,
+                olatitude,
+                olongitude
+            )
+            self.catchAllPokemon(findFort)
+            steps += 1
+
+        # Finalize walk
+        steps -= 1
+        if steps % delay > 0:
+            time.sleep(delay - steps)
+            self.session.setCoordinates(
+                latitude,
+                longitude
+            )
+        if random.random() < .05:
+            self.setEggs()
+            self.cleanInventory()
+            self.cleanPokemon(thresholdCP=1000)
+        time.sleep(6)
+
+    def walkToForts(self, olatitude, olongitude, epsilon=12, step=10, delay=10):
+        if step >= epsilon:
+            raise GeneralPogoException("Walk may never converge")
+
+        if self.session.location.noop:
+            raise GeneralPogoException("Location not set")
+
+        # Calculate distance to position
+        latitude, longitude, _ = self.session.getCoordinates()
+        dist = closest = Location.getDistance(
+            latitude,
+            longitude,
+            olatitude,
+            olongitude
+        )
+
+        # Run walk
+        divisions = closest / step
+        dLat = (latitude - olatitude) / divisions
+        dLon = (longitude - olongitude) / divisions
+
+        logging.info(
+            "Walking %f meters. This will take ~%f seconds...",
+            dist,
+            dist / step
+        )
+
+        # Approach at supplied rate
+        steps = 1
+        print("dist is " + str(dist))
+        while dist > epsilon:
+            logging.debug("%f m -> %f m away", closest - dist, closest)
+            latitude -= dLat
+            longitude -= dLon
+            steps %= delay
+            if steps == 0:
+                self.session.setCoordinates(
+                    latitude,
+                    longitude
+                )
+            time.sleep(2)
+            dist = Location.getDistance(
+                latitude,
+                longitude,
+                olatitude,
+                olongitude
+            )
+            forts = self.sortCloseForts()
+            self.walkAndSpinMany(forts)
+            steps += 1
+
+        # Finalize walk
+        steps -= 1
+        if steps % delay > 0:
+            time.sleep(delay - steps)
+            self.session.setCoordinates(
+                latitude,
+                longitude
+            )
+        if random.random() < .05:
+            self.setEggs()
+            self.cleanInventory()
+            self.cleanPokemon(thresholdCP=1000)
+        time.sleep(6)
+
+    def loop(self):
+        places = [(40.769162, -73.980618), (40.774557, -73.974631), (40.773103, -73.968934), (40.765469, -73.973236)]
+        while True:
+            for lat, lon in places:
+                self.walkTo(lat, lon)
+
+    def loopForForts(self):
+        places = [(40.769162, -73.980618), (40.774557, -73.974631), (40.773103, -73.968934), (40.765469, -73.973236)]
+        while True:
+            for lat, lon in places:
+                self.walkToForts(lat, lon)
+
 
     # Catch a pokemon at a given point
     def walkAndCatch(self, pokemon):
@@ -264,10 +435,10 @@ class Trainer(object):
         # No fort, demo == over
         if fort:
             details = self.session.getFortDetails(fort)
-            logging.info("Spinning the Fort \"%s\":", details.name)
-
+            logging.info("Spinning the Fort \"%s\": ", details)
+            self.lastFort = fort
             # Walk over
-            self.walkTo(fort.latitude, fort.longitude, step=3.2)
+            self.walkTo(fort.latitude, fort.longitude, step=10, findFort=False)
             # Give it a spin
             fortResponse = self.session.getFortSearch(fort)
             logging.info(fortResponse)
@@ -333,7 +504,7 @@ class Trainer(object):
                 # Get rid of low CP, low evolve value
                 logging.info("Releasing %s", pokedex[pokemon.pokemon_id])
                 self.session.releasePokemon(pokemon)
-                time.sleep(2)
+                time.sleep(5)
 
         # Evolve those we want
         for evolve in evolables:
@@ -364,7 +535,7 @@ class Trainer(object):
         bag = self.session.inventory.bag
 
         # Clear out all of a certain type
-        tossable = [items.POTION, items.SUPER_POTION, items.REVIVE]
+        tossable = [items.POTION, items.SUPER_POTION, items.REVIVE, items.HYPER_POTION]
         for toss in tossable:
             if toss in bag and bag[toss]:
                 self.session.recycleItem(toss, bag[toss])
@@ -372,9 +543,6 @@ class Trainer(object):
 
         # Limit a certain type
         limited = {
-            items.POKE_BALL: 50,
-            items.GREAT_BALL: 100,
-            items.ULTRA_BALL: 150,
             items.RAZZ_BERRY: 25
         }
         for limit in limited:
