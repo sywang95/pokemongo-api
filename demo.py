@@ -2,6 +2,7 @@
 import argparse
 import logging
 import time
+import random
 
 import pogo.util as util
 from pogo.api import PokeAuthSession
@@ -52,36 +53,24 @@ if __name__ == '__main__':
         session = auth_session.authenticate()
 
     # Time to show off what we can do
-    if session:
-        trainer = Trainer(auth_session, session)
+    trainer = Trainer(auth_session, session)
+    cooldown = 10
+    print trainer.session.getInventory()
+    while session:
+        try:
+            trainer.loopForForts()
+        except Exception as e:
+            logging.critical(e)
+            # if "usable" in e.message:
+            #     trainer.walkToForts(40.773436, -73.971938)
+            #     forts = trainer.sortCloseForts()
+            #     trainer.walkAndSpinMany(forts)
+            #trainer._session = trainer.auth.reauthenticate(trainer.session)
+            #time.sleep(cooldown)
+            #cooldown *= 2
 
-        # Wait for a second to prevent GeneralPogoException
-        # Goodnight moon. Goodnight moon.
-        time.sleep(1)
-
-        # General
-        trainer.getProfile()
-        trainer.checkInventory()
-
-        # Things we need GPS for
-        if args.location and args.encrypt_lib:
-            # We need a solid sleep to get over rate limting
-            # Goodnight cow jumping over the moon.
-            time.sleep(10)
-
-            # Pokemon related
-            pokemon = trainer.findBestPokemon()
-            trainer.walkAndCatch(pokemon)
-
-            # Goodnight light and the red balloon.
-            time.sleep(5)
-
-            # Pokestop related
-            fort = trainer.findClosestFort()
-            trainer.walkAndSpin(fort)
-
-            # see simpleBot() for logical usecases
-            # trainer.simpleBot()
+        # see simpleBot() for logical usecases
+        # trainer.simpleBot()
 
     else:
         logging.critical('Session not created successfully')
