@@ -116,8 +116,7 @@ class Trainer(object):
 
         # If party full
         if encounter.status == encounter.POKEMON_INVENTORY_FULL:
-            logging.error("Can't catch! Party is full!")
-            return None
+            self.cleanPokemon(1000)
 
         # Grab needed data from proto
         chances = encounter.capture_probability.capture_probability
@@ -221,7 +220,7 @@ class Trainer(object):
                     latitude,
                     longitude
                 )
-            time.sleep(2)
+            time.sleep(3)
             dist = Location.getDistance(
                 latitude,
                 longitude,
@@ -241,7 +240,6 @@ class Trainer(object):
         if random.random() < .05:
             self.setEggs()
             self.cleanInventory()
-            self.cleanPokemon(thresholdCP=1000)
         time.sleep(6)
 
     # Walk over to position in meters
@@ -286,7 +284,7 @@ class Trainer(object):
                     latitude,
                     longitude
                 )
-            time.sleep(2)
+            time.sleep(3)
             dist = Location.getDistance(
                 latitude,
                 longitude,
@@ -344,13 +342,14 @@ class Trainer(object):
             logging.debug("%f m -> %f m away", closest - dist, closest)
             latitude -= dLat
             longitude -= dLon
+            print ("At %f, %f" % (latitude, longitude))
             steps %= delay
             if steps == 0:
                 self.session.setCoordinates(
                     latitude,
                     longitude
                 )
-            time.sleep(2)
+            time.sleep(3)
             dist = Location.getDistance(
                 latitude,
                 longitude,
@@ -372,7 +371,6 @@ class Trainer(object):
         if random.random() < .05:
             self.setEggs()
             self.cleanInventory()
-            self.cleanPokemon(thresholdCP=1000)
         time.sleep(6)
 
     def loop(self):
@@ -453,14 +451,14 @@ class Trainer(object):
         inventory = self.session.inventory
         for pokemon in inventory.party:
             logging.info(self.session.evolvePokemon(pokemon))
-            time.sleep(1)
+            time.sleep(5)
 
     # You probably don't want to run this
     def releaseAllPokemon(self):
         inventory = self.session.inventory
         for pokemon in inventory.party:
             self.session.releasePokemon(pokemon)
-            time.sleep(1)
+            time.sleep(5)
 
     # Set an egg to an incubator
     def setEggs(self):
@@ -487,7 +485,7 @@ class Trainer(object):
 
     # Understand this function before you run it.
     # Otherwise you may flush pokemon you wanted.
-    def cleanPokemon(self, thresholdCP=50):
+    def cleanPokemon(self, thresholdCP=500):
         logging.info("Cleaning out Pokemon...")
         party = self.session.inventory.party
         evolables = [pokedex.PIDGEY, pokedex.RATTATA, pokedex.ZUBAT]
@@ -519,16 +517,16 @@ class Trainer(object):
                 pokemon = pokemons.pop()
                 logging.info("Releasing %s", pokedex[pokemon.pokemon_id])
                 self.session.releasePokemon(pokemon)
-                time.sleep(1)
+                time.sleep(5)
                 candies += 1
 
             # evolve remainder
             for pokemon in pokemons:
                 logging.info("Evolving %s", pokedex[pokemon.pokemon_id])
                 logging.info(self.session.evolvePokemon(pokemon))
-                time.sleep(1)
+                time.sleep(5)
                 self.session.releasePokemon(pokemon)
-                time.sleep(1)
+                time.sleep(5)
 
     def cleanInventory(self):
         logging.info("Cleaning out Inventory...")
@@ -543,7 +541,8 @@ class Trainer(object):
 
         # Limit a certain type
         limited = {
-            items.RAZZ_BERRY: 25
+            items.RAZZ_BERRY: 25,
+            items.POKE_BALL: 225
         }
         for limit in limited:
             if limit in bag and bag[limit] > limited[limit]:
