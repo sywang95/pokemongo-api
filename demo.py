@@ -69,5 +69,5 @@ if __name__ == '__main__':
                     else:
                         trainer._session = trainer.auth.reauthenticate(trainer.session)
         except Exception as e:
-            print "oops"
+            print e
             time.sleep(9000)

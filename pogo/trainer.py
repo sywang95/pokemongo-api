@@ -17,8 +17,8 @@ class Trainer(object):
     def __init__(self, auth, session):
         self._auth = auth
         self._session = session
-        self.direction = 1
         self.lastFort = 0
+        self.level = 0
 
     @property
     def auth(self):
@@ -43,7 +43,7 @@ class Trainer(object):
             for item in crap:
                 self.session.recycleItem(item, 15)
 
-    def catchAllPokemon(self, findFort=True):
+    def catchAllPokemon(self):
         # Get Map details and print pokemon
         logging.info("Finding Nearby Pokemon:")
         cells = self.session.getMapObjects(bothDirections=False)
@@ -109,7 +109,7 @@ class Trainer(object):
         return pokemonBest
 
     # Wrap both for ease
-    def encounterAndCatch(self, pokemon, thresholdP=0.5, limit=5, delay=2):
+    def encounterAndCatch(self, pokemon, thresholdP=0.35, limit=5, delay=2):
         # Start encounter
         encounter = self.session.encounterPokemon(pokemon)
         print encounter
@@ -179,7 +179,7 @@ class Trainer(object):
                 logging.info("Over catch limit")
                 return None
 
-    def walk(self, olatitude, olongitude, epsilon=12, step=10, delay=10, findFort=True):
+    def walkTo(self, olatitude, olongitude, typeOfWalk=0, epsilon=12, step=10, delay=10):
         if step >= epsilon:
             raise GeneralPogoException("Walk may never converge")
 
@@ -227,6 +227,11 @@ class Trainer(object):
                 olatitude,
                 olongitude
             )
+            if typeOfWalk:
+                forts = self.sortCloseForts()
+                self.walkAndSpinMany(forts)
+            else:
+                self.catchAllPokemon()
             steps += 1
 
         # Finalize walk
@@ -238,152 +243,20 @@ class Trainer(object):
                 longitude
             )
         if random.random() < .05:
+            self.checkLevel()
+            print self.session.getInventory()
             self.setEggs()
             self.cleanInventory()
+            self.cleanPokemon(thresholdCP=500)
         time.sleep(6)
 
-    # Walk over to position in meters
-    def walkTo(self, olatitude, olongitude, epsilon=12, step=10, delay=10, findFort=True):
-        if step >= epsilon:
-            raise GeneralPogoException("Walk may never converge")
-
-        if self.session.location.noop:
-            raise GeneralPogoException("Location not set")
-
-        # Calculate distance to position
-        latitude, longitude, _ = self.session.getCoordinates()
-        dist = closest = Location.getDistance(
-            latitude,
-            longitude,
-            olatitude,
-            olongitude
-        )
-
-        # Run walk
-        divisions = closest / step
-        dLat = (latitude - olatitude) / divisions
-        dLon = (longitude - olongitude) / divisions
-
-        logging.info(
-            "Walking %f meters. This will take ~%f seconds...",
-            dist,
-            dist / step
-        )
-
-        # Approach at supplied rate
-        steps = 1
-        print("dist is " + str(dist))
-        while dist > epsilon:
-            logging.debug("%f m -> %f m away", closest - dist, closest)
-            latitude -= dLat
-            longitude -= dLon
-            print ("At %f, %f" % (latitude, longitude))
-            steps %= delay
-            if steps == 0:
-                self.session.setCoordinates(
-                    latitude,
-                    longitude
-                )
-            time.sleep(3)
-            dist = Location.getDistance(
-                latitude,
-                longitude,
-                olatitude,
-                olongitude
-            )
-            self.catchAllPokemon(findFort)
-            steps += 1
-
-        # Finalize walk
-        steps -= 1
-        if steps % delay > 0:
-            time.sleep(delay - steps)
-            self.session.setCoordinates(
-                latitude,
-                longitude
-            )
-        if random.random() < .05:
-            self.setEggs()
-            self.cleanInventory()
-            self.cleanPokemon(thresholdCP=1000)
-        time.sleep(6)
-
-    def walkToForts(self, olatitude, olongitude, epsilon=12, step=10, delay=10):
-        if step >= epsilon:
-            raise GeneralPogoException("Walk may never converge")
-
-        if self.session.location.noop:
-            raise GeneralPogoException("Location not set")
-
-        # Calculate distance to position
-        latitude, longitude, _ = self.session.getCoordinates()
-        dist = closest = Location.getDistance(
-            latitude,
-            longitude,
-            olatitude,
-            olongitude
-        )
-
-        # Run walk
-        divisions = closest / step
-        dLat = (latitude - olatitude) / divisions
-        dLon = (longitude - olongitude) / divisions
-
-        logging.info(
-            "Walking %f meters. This will take ~%f seconds...",
-            dist,
-            dist / step
-        )
-
-        # Approach at supplied rate
-        steps = 1
-        print("dist is " + str(dist))
-        while dist > epsilon:
-            logging.debug("%f m -> %f m away", closest - dist, closest)
-            latitude -= dLat
-            longitude -= dLon
-            print ("At %f, %f" % (latitude, longitude))
-            steps %= delay
-            if steps == 0:
-                self.session.setCoordinates(
-                    latitude,
-                    longitude
-                )
-            time.sleep(3)
-            dist = Location.getDistance(
-                latitude,
-                longitude,
-                olatitude,
-                olongitude
-            )
-            forts = self.sortCloseForts()
-            self.walkAndSpinMany(forts)
-            steps += 1
-
-        # Finalize walk
-        steps -= 1
-        if steps % delay > 0:
-            time.sleep(delay - steps)
-            self.session.setCoordinates(
-                latitude,
-                longitude
-            )
-        if random.random() < .05:
-            self.setEggs()
-            self.cleanInventory()
-        time.sleep(6)
-
-    def loop(self):
-        places = [(40.769162, -73.980618), (40.774557, -73.974631), (40.773103, -73.968934), (40.765469, -73.973236)]
-        while True:
-            for lat, lon in places:
-                self.walkTo(lat, lon)
 
     def loopForForts(self):
         places = [(40.769162, -73.980618), (40.774557, -73.974631), (40.773103, -73.968934), (40.765469, -73.973236)]
+        self.level = self.session.inventory.stats.level
         while True:
             for lat, lon in places:
-                self.walkToForts(lat, lon)
+                self.walkTo(lat, lon, 1)
 
 
     # Catch a pokemon at a given point
@@ -436,7 +309,7 @@ class Trainer(object):
             logging.info("Spinning the Fort \"%s\": ", details)
             self.lastFort = fort
             # Walk over
-            self.walkTo(fort.latitude, fort.longitude, step=10, findFort=False)
+            self.walkTo(fort.latitude, fort.longitude, step=10)
             # Give it a spin
             fortResponse = self.session.getFortSearch(fort)
             logging.info(fortResponse)
@@ -549,35 +422,8 @@ class Trainer(object):
                 self.session.recycleItem(limit, bag[limit] - limited[limit])
                 time.sleep(1)
 
-    # Basic bot
-    def simpleBot(self):
-        # Trying not to flood the servers
-        cooldown = 1
-
-        # Run the bot
-        while True:
-            forts = self.sortCloseForts()
-            self.cleanPokemon()
-            self.cleanInventory()
-            self.setEggs()
-            time.sleep(1)
-            try:
-                for fort in forts:
-                    pokemon = self.findBestPokemon()
-                    self.walkAndCatch(pokemon)
-                    self.walkAndSpin(fort)
-                    cooldown = 1
-                    time.sleep(1)
-
-            # Catch problems and reauthenticate
-            except GeneralPogoException as e:
-                logging.critical('GeneralPogoException raised: %s', e)
-                self._session = self.auth.reauthenticate(self.session)
-                time.sleep(cooldown)
-                cooldown *= 2
-
-            except Exception as e:
-                logging.critical('Exception raised: %s', e)
-                self._session = self.auth.reauthenticate(self.session)
-                time.sleep(cooldown)
-                cooldown *= 2
+    def checkLevel(self):
+        updated_level = self.session.inventory.stats.level
+        if updated_level != self.level: 
+            self.level = updated_level
+            self.session.getLevelUp(updated_level)
