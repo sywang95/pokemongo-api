@@ -19,6 +19,10 @@ class Trainer(object):
         self._session = session
         self.lastFort = 0
         self.level = 0
+        self.ignore = []
+
+        self.BAD_POKEMONS = [1, 2, 4, 5, 7, 8, 11, 14, 15, 17, 18, 20, 22, 24, 25, 30, 42, 46, 95, 125, 127, 128, ]
+        self.DONT_TRANSFER = [113]
 
     @property
     def auth(self):
@@ -54,69 +58,27 @@ class Trainer(object):
             # Heap in pokemon protos where we have long + lat
             pokemons = [p for p in cell.catchable_pokemons]
             for pokemon in pokemons:
+                if pokemon.encounter_id in self.ignore:
+                    continue
                 self.encounterAndCatch(pokemon)
 
     def pythagorean(self, lat1, lat2, lon1, lon2):
         a = pow(lat1 - lat2, 2) + pow(lon1 - lon2, 2)
         return a
 
-    # Grab the nearest pokemon details
-    def findBestPokemon(self):
-        # Get Map details and print pokemon
-        logging.info("Finding Nearby Pokemon:")
-        cells = self.session.getMapObjects(bothDirections=False)
-        closest = float("Inf")
-        best = -1
-        pokemonBest = None
-        latitude, longitude, _ = self.session.getCoordinates()
-        logging.info("Current pos: %f, %f", latitude, longitude)
-
-        for cell in cells.map_cells:
-            # Heap in pokemon protos where we have long + lat
-            pokemons = [p for p in cell.wild_pokemons]
-            #pokemons += [p for p in cell.catchable_pokemons]
-            for pokemon in pokemons:
-                # Normalize the ID from different protos
-                pokemonId = getattr(pokemon, "pokemon_id", None)
-                if not pokemonId:
-                    pokemonId = pokemon.pokemon_data.pokemon_id
-
-                # Find distance to pokemon
-                dist = Location.getDistance(
-                    latitude,
-                    longitude,
-                    pokemon.latitude,
-                    pokemon.longitude
-                )
-
-                # Log the pokemon found
-                logging.info(
-                    "%s, %f meters away",
-                    pokedex[pokemonId],
-                    dist
-                )
-
-                rarity = pokedex.getRarityById(pokemonId)
-                # Greedy for rarest
-                if rarity > best:
-                    pokemonBest = pokemon
-                    best = rarity
-                    closest = dist
-                # Greedy for closest of same rarity
-                elif rarity == best and dist < closest:
-                    pokemonBest = pokemon
-                    closest = dist
-        return pokemonBest
-
     # Wrap both for ease
     def encounterAndCatch(self, pokemon, thresholdP=0.35, limit=5, delay=2):
         # Start encounter
         encounter = self.session.encounterPokemon(pokemon)
         print encounter
+        self.ignore.append(encounter.wild_pokemon.encounter_id)
 
         # If party full
         if encounter.status == encounter.POKEMON_INVENTORY_FULL:
-            self.cleanPokemon(1000)
+            self.cleanPokemon(500)
+
+        if encounter.wild_pokemon.pokemon_data.pokemon_id in self.BAD_POKEMONS and encounter.wild_pokemon.pokemon_data.cp > 100:
+            return
 
         # Grab needed data from proto
         chances = encounter.capture_probability.capture_probability
@@ -154,7 +116,8 @@ class Trainer(object):
 
                 # if no alt ball, there are no balls
                 elif altBall == items.UNKNOWN:
-                    raise GeneralPogoException("Out of usable balls")
+                    print "Out of usable balls"
+                    return
                 else:
                     bestBall = altBall
 
@@ -248,25 +211,36 @@ class Trainer(object):
             self.setEggs()
             self.cleanInventory()
             self.cleanPokemon(thresholdCP=500)
+        self.ignore = []
         time.sleep(6)
 
 
-    def loopForForts(self):
+
+    def loopForFortsPark(self):
         places = [(40.769162, -73.980618), (40.774557, -73.974631), (40.773103, -73.968934), (40.765469, -73.973236)]
         self.level = self.session.inventory.stats.level
         while True:
             for lat, lon in places:
+                self.cleanInventory()
+                if sum(self.session.inventory.bag.values()) < 50:
+                    print "===EXITING FROM POKEMON ONLY==="
+                    break
+                self.walkTo(lat, lon, 0)
+            for lat, lon in places:
+                self.cleanInventory()
+                if sum(self.session.inventory.bag.values()) > 320:
+                    print "===EXITING FROM POKEMON LOL"
+                    break
                 self.walkTo(lat, lon, 1)
 
 
-    # Catch a pokemon at a given point
-    def walkAndCatch(self, pokemon):
-        if pokemon:
-            logging.info(
-                "Catching %s:", pokedex[pokemon.pokemon_data.pokemon_id]
-            )
-            self.walkTo(pokemon.latitude, pokemon.longitude, step=3.2)
-            logging.info(self.encounterAndCatch(pokemon))
+    def loopForWaterPokemon(self):
+        places = [(40.757899, -74.005280), (40.773517, -73.994481)]
+        self.level = self.session.inventory.stats.level
+        while True:
+            for lat, lon in places:
+                self.walkTo(lat, lon, 0)
+            self.walkTo(places[0][0], places[0][1], 0)
 
     # We sort forts using Hilbert indices generated by their
     # coordinates. To avoid the long walk to the first point,
@@ -312,6 +286,8 @@ class Trainer(object):
             self.walkTo(fort.latitude, fort.longitude, step=10)
             # Give it a spin
             fortResponse = self.session.getFortSearch(fort)
+            if fortResponse.result == fortResponse.INVENTORY_FULL: 
+                self.cleanInventory()
             logging.info(fortResponse)
 
     # Walk and spin everywhere
@@ -361,45 +337,39 @@ class Trainer(object):
     def cleanPokemon(self, thresholdCP=500):
         logging.info("Cleaning out Pokemon...")
         party = self.session.inventory.party
-        evolables = [pokedex.PIDGEY, pokedex.RATTATA, pokedex.ZUBAT]
-        toEvolve = {evolve: [] for evolve in evolables}
         for pokemon in party:
             # If low cp, throw away
             if pokemon.cp < thresholdCP:
-                # It makes more sense to evolve some,
-                # than throw away
-                if pokemon.pokemon_id in evolables:
-                    toEvolve[pokemon.pokemon_id].append(pokemon)
-                    continue
-
                 # Get rid of low CP, low evolve value
+                if pokemon.pokemon_id in self.DONT_TRANSFER:
+                    pass
                 logging.info("Releasing %s", pokedex[pokemon.pokemon_id])
                 self.session.releasePokemon(pokemon)
                 time.sleep(5)
 
-        # Evolve those we want
-        for evolve in evolables:
-            # if we don't have any candies of that type
-            # e.g. not caught that pokemon yet
-            if evolve not in self.session.inventory.candies:
-                continue
-            candies = self.session.inventory.candies[evolve]
-            pokemons = toEvolve[evolve]
-            # release for optimal candies
-            while candies // pokedex.evolves[evolve] < len(pokemons):
-                pokemon = pokemons.pop()
-                logging.info("Releasing %s", pokedex[pokemon.pokemon_id])
+    def userClean(self):
+        party = self.session.inventory.party
+        for pokemon in party:
+            print pokemon
+            release = raw_input("Release" + pokedex[pokemon.pokemon_id])
+            if release == "y":
                 self.session.releasePokemon(pokemon)
-                time.sleep(5)
-                candies += 1
 
-            # evolve remainder
-            for pokemon in pokemons:
-                logging.info("Evolving %s", pokedex[pokemon.pokemon_id])
-                logging.info(self.session.evolvePokemon(pokemon))
-                time.sleep(5)
-                self.session.releasePokemon(pokemon)
-                time.sleep(5)
+    # def massEvolve(self):
+    #     evolables = [pokedex.PIDGEY, pokedex.RATTATA, pokedex.ZUBAT]
+    #     toEvolve = {evolve: [] for evolve in evolables}
+    #     for evolve in evolables:
+    #         # if we don't have any candies of that type
+    #         # e.g. not caught that pokemon yet
+    #         if evolve not in self.session.inventory.candies:
+    #             continue
+    #         candies = self.session.inventory.candies[evolve]
+    #         pokemons = toEvolve[evolve]
+    #         # release for optimal candies
+    #         while candies // pokedex.evolves[evolve] < len(pokemons):
+    #             pokemon = pokemons.pop()
+    #             candies += 1
+
 
     def cleanInventory(self):
         logging.info("Cleaning out Inventory...")
@@ -415,7 +385,6 @@ class Trainer(object):
         # Limit a certain type
         limited = {
             items.RAZZ_BERRY: 25,
-            items.POKE_BALL: 225
         }
         for limit in limited:
             if limit in bag and bag[limit] > limited[limit]:

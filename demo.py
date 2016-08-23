@@ -11,7 +11,7 @@ from pogo.trainer import Trainer
 
 
 # Entry point
-# Start off authentication and demo
+# Start off authentication and demo 
 if __name__ == '__main__':
     while True:
         try:
