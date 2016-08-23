@@ -9,37 +9,10 @@ This is arguably one of the cleanest python API's out there. It is our hope that
 ## Installation
 
 Install this package via pip i.e
-`pip install git+git://github.com/rubenvereecken/pokemongo-api@master`
+`pip install git+git://github.com/sywang95/pokemongo-api@master`
 Alternatively, clone this and use `pip install .`
 
-To get newest, run `pip install git+git://github.com/rubenvereecken/pokemongo-api@master --upgrade`
-
-## Implementation
-
-Trainer is a general purpose class meant to encapsulate basic functons. We recommend that you inherit from this class to provide your specific usecase. We understand that `Trainer` is not as fully flushed out as it could be- it is meant to be a stub for building more complex logic. e.g.
-```
-class Map(Trainer):
-    """My beautiful map implementation"""
-
-    def fillWebSocketsForRealtimeStuffOrSomethingLikeThat(self):
-        """Fill websockets with profile data or something.
-        I don't know. The world is your oyster."""
-        profile = self.session.getProfile()
-        ...
-```
-
-or
-
-```
-class Bot(Trainer):
-    """Such bot, much cheat."""
-
-    def catchAllThePokemonOrSomething(self):
-        """Whatever it is botters do"""
-        ...
-```
-
-Feel free to also ignore trainer and call session functions directly.
+To get newest, run `pip install git+git://github.com/sywang95/pokemongo-api@master --upgrade`
 
 ## Features
 
@@ -74,40 +47,6 @@ Our current implementaion covers most of the basics of gameplay. The following m
 
 Every method has been tested locally. Automated units tests are needed. Pull requests are encouraged.
 
-## Demo
-`demo.py` includes a demo of the API.
-
-```
-➜  python demo.py -a "google" -u "email@gmail.com" -p "thepassword" -l "The Atlantic Ocean" -e"libencrypt.so"
-
-2016-07-17 16:26:59,947 - INFO - Creating Google session for email@gmail.com
-2016-07-17 16:26:59,953 - INFO - Starting new HTTPS connection (1): android.clients.google.com
-2016-07-17 16:27:00,362 - INFO - Starting new HTTPS connection (1): android.clients.google.com
-2016-07-17 16:27:00,789 - INFO - Location: The Atlantic Ocean
-2016-07-17 16:27:00,789 - INFO - Coordinates: 51.01 7.12 0.0
-2016-07-17 16:27:00,793 - INFO - Starting new HTTPS connection (1): pgorelease.nianticlabs.com
-2016-07-17 16:27:01,633 - INFO - creation_time: 3341800000
-team: 3
-avatar {
-  hair: 1
-  shirt: 1
-  pants: 1
-  hat: 1
-  shoes: 1
-  eyes: 1
-  backpack: 1
-}
-max_pokemon_storage: 250
-max_item_storage: 400
-daily_bonus {
-  next_defender_bonus_collect_timestamp_ms: 4106877052
-}
-currency {
-  type: "STARDUST"
-  quantity: 9001
-}
-```
-
 This is achieved with minimal coding effort on the client's part
 (extract from `demo.py`):
 
@@ -122,16 +61,6 @@ This is achieved with minimal coding effort on the client's part
       profile = session.getProfile()
       logging.info(profile)
 ```
-
-## Contribution
-Hell yeah!
-I'm on [Slack](https://pkre.slack.com) too
-(want an [invite](https://shielded-earth-81203.herokuapp.com)?)
-if you want to have a quick chat.
-
-I welcome all PRs but for big changes it'd be best
-to open an issue so I have some idea of what's going on.
-This thing is under heavy development after all.
 
 ## Protocol
 We currently use [AeonLucid's Pokemon Go Protobuf protocol](https://github.com/AeonLucid/POGOProtos).
