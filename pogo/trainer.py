@@ -307,7 +307,7 @@ class Trainer(object):
         inventory = self.session.inventory
         for pokemon in inventory.party:
             self.session.releasePokemon(pokemon)
-            time.sleep(5)
+            time.sleep(2)
 
     # Set an egg to an incubator
     def setEggs(self):

@@ -11,7 +11,7 @@ from pogo.trainer import Trainer
 
 
 # Entry point
-# Start off authentication and demo 
+# Start off authentication and demo
 if __name__ == '__main__':
     while True:
         try:
@@ -26,11 +26,12 @@ if __name__ == '__main__':
             parser.add_argument("-e", "--encrypt_lib", help="Encryption Library")
             parser.add_argument("-g", "--geo_key", help="GEO API Secret")
             parser.add_argument("-l", "--location", help="Location")
+            parser.add_argument("-d", "--delete", help="Manually Delete Pokemon")
             parser.add_argument("-proxy", "--proxy", help="Full Path to Proxy")
             args = parser.parse_args()
 
             # Check service
-            if args.auth not in ['ptc', 'google']:
+            if args.auth not in ['ptc', 'google']: 
                 raise GeneralPogoException('Invalid auth service {}'.format(args.auth))
 
             # Set proxy
@@ -56,14 +57,18 @@ if __name__ == '__main__':
 
             # Time to show off what we can do
             trainer = Trainer(auth_session, session)
+            print trainer.session.getInventory()
+            if args.delete:
+                trainer.cleanPokemon()
+                trainer.userClean()
             while session:
                 try:
-                    print trainer.session.getInventory()
-                    trainer.loopForForts()
+                    trainer.setEggs()
+                    trainer.loopForFortsPark()
                 except Exception as e:
                     logging.critical(e)
                     if "usable" in e.message:
-                        trainer.walkToForts(40.773436, -73.971938)
+                        trainer.walkTo(40.773436, -73.971938)
                         forts = trainer.sortCloseForts()
                         trainer.walkAndSpinMany(forts)
                     else:
