@@ -60,6 +60,7 @@ if __name__ == '__main__':
             print trainer.session.getInventory()
             if args.delete:
                 trainer.cleanPokemon()
+                time.sleep(5)
                 trainer.userClean()
             while session:
                 try:
@@ -75,4 +76,3 @@ if __name__ == '__main__':
                         trainer._session = trainer.auth.reauthenticate(trainer.session)
         except Exception as e:
             print e
-            time.sleep(9000)

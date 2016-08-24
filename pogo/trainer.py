@@ -21,8 +21,10 @@ class Trainer(object):
         self.level = 0
         self.ignore = []
 
-        self.BAD_POKEMONS = [1, 2, 4, 5, 7, 8, 11, 14, 15, 17, 18, 20, 22, 24, 25, 30, 42, 46, 95, 125, 127, 128, ]
+        self.BAD_POKEMONS = [1, 4, 7, 15, 20, 22, 24, 25, 30, 42, 46, 95, 114, 128, ]
         self.DONT_TRANSFER = [113]
+        self.MAGIKARP = 129
+        self.TRANSFER = [11, 14, 17, 20, 30, 33, 42]
 
     @property
     def auth(self):
@@ -222,7 +224,7 @@ class Trainer(object):
         while True:
             for lat, lon in places:
                 self.cleanInventory()
-                if sum(self.session.inventory.bag.values()) < 50:
+                if sum(self.session.inventory.bag.values()) < 80:
                     print "===EXITING FROM POKEMON ONLY==="
                     break
                 self.walkTo(lat, lon, 0)
@@ -288,6 +290,8 @@ class Trainer(object):
             fortResponse = self.session.getFortSearch(fort)
             if fortResponse.result == fortResponse.INVENTORY_FULL: 
                 self.cleanInventory()
+            #if fort.lure_info.encounter_id
+            print fort.lure_info
             logging.info(fortResponse)
 
     # Walk and spin everywhere
@@ -337,13 +341,47 @@ class Trainer(object):
     def cleanPokemon(self, thresholdCP=500):
         logging.info("Cleaning out Pokemon...")
         party = self.session.inventory.party
+        evolables = [pokedex.PIDGEY, pokedex.RATTATA, pokedex.ZUBAT, pokedex.NIDORAN_MALE,
+                     pokedex.NIDORAN_FEMALE, pokedex.CATERPIE, pokedex.WEEDLE, ]
+        toEvolve = {evolve: [] for evolve in evolables}
         for pokemon in party:
             # If low cp, throw away
-            if pokemon.cp < thresholdCP:
-                # Get rid of low CP, low evolve value
+            if pokemon.cp < thresholdCP or pokemon.pokemon_id in self.TRANSFER:
+                # It makes more sense to evolve some,
+                # than throw away
+                if pokemon.pokemon_id == self.MAGIKARP and pokemon.cp > 150:
+                    continue
+                if pokemon.pokemon_id in evolables:
+                    toEvolve[pokemon.pokemon_id].append(pokemon)
+                    continue
                 if pokemon.pokemon_id in self.DONT_TRANSFER:
-                    pass
+                    continue
+                # Get rid of low CP, low evolve value
                 logging.info("Releasing %s", pokedex[pokemon.pokemon_id])
+                self.session.releasePokemon(pokemon)
+                time.sleep(5)
+
+        # Evolve those we want
+        for evolve in evolables:
+            # if we don't have any candies of that type
+            # e.g. not caught that pokemon yet
+            if evolve not in self.session.inventory.candies:
+                continue
+            candies = self.session.inventory.candies[evolve]
+            pokemons = toEvolve[evolve]
+            # release for optimal candies
+            while candies // pokedex.evolves[evolve] < len(pokemons):
+                pokemon = pokemons.pop()
+                logging.info("Releasing %s", pokedex[pokemon.pokemon_id])
+                self.session.releasePokemon(pokemon)
+                time.sleep(1)
+                candies += 1
+
+            # evolve remainder
+            for pokemon in pokemons:
+                logging.info("Evolving %s", pokedex[pokemon.pokemon_id])
+                logging.info(self.session.evolvePokemon(pokemon))
+                time.sleep(25)
                 self.session.releasePokemon(pokemon)
                 time.sleep(5)
 
