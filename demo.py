@@ -27,6 +27,7 @@ if __name__ == '__main__':
             parser.add_argument("-g", "--geo_key", help="GEO API Secret")
             parser.add_argument("-l", "--location", help="Location")
             parser.add_argument("-d", "--delete", help="Manually Delete Pokemon")
+            parser.add_argument("-f", "--find", help="Manually Find Pokemon")
             parser.add_argument("-proxy", "--proxy", help="Full Path to Proxy")
             args = parser.parse_args()
 
@@ -55,13 +56,18 @@ if __name__ == '__main__':
             else:
                 session = auth_session.authenticate()
 
-            # Time to show off what we can do
             trainer = Trainer(auth_session, session)
             print trainer.session.getInventory()
             if args.delete:
                 trainer.cleanPokemon()
                 time.sleep(5)
                 trainer.userClean()
+                break
+            if args.find:
+                trainer.catchAllPokemon()
+                trainer.walkTo(32.733779,-117.114312)
+                break
+
             while session:
                 try:
                     trainer.setEggs()
@@ -69,7 +75,6 @@ if __name__ == '__main__':
                 except Exception as e:
                     logging.critical(e)
                     if "usable" in e.message:
-                        trainer.walkTo(40.773436, -73.971938)
                         forts = trainer.sortCloseForts()
                         trainer.walkAndSpinMany(forts)
                     else:

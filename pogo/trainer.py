@@ -21,10 +21,14 @@ class Trainer(object):
         self.level = 0
         self.ignore = []
 
-        self.BAD_POKEMONS = [1, 4, 7, 15, 20, 22, 24, 25, 30, 42, 46, 95, 114, 128, ]
-        self.DONT_TRANSFER = [113]
+        self.NY = [(40.769162, -73.980618), (40.774557, -73.974631), (40.773103, -73.968934), (40.765469, -73.973236)]
+        self.CA = [(37.811337, -122.418780), (37.809515, -122.415883), (37.808871, -122.410476), (37.809342, -122.410369), 
+                   (37.811045, -122.411264), (37.811344, -122.410365), (37.810937, -122.410102), (37.810113, -122.410233),
+                   (37.808525, -122.409777), (37.811337, -122.418780), (37.810689, -122.419574), ]
+        self.DONT_CATCH = [1, 4, 7, 15, 20, 22, 24, 25, 30, 42, 46, 95, 114, 128, 55, 73]
+        self.DONT_TRANSFER = [113, 103, 149, 3, 6, 9, 31, 34, 40, 45, 59, 65, 80, 130, 131, 134, 62, 137, 143]
         self.MAGIKARP = 129
-        self.TRANSFER = [11, 14, 17, 20, 30, 33, 42]
+        self.TRANSFER = [11, 14, 17, 20, 30, 33, 42, 119, 73, 55, 54, 118, 72]
 
     @property
     def auth(self):
@@ -51,7 +55,6 @@ class Trainer(object):
 
     def catchAllPokemon(self):
         # Get Map details and print pokemon
-        logging.info("Finding Nearby Pokemon:")
         cells = self.session.getMapObjects(bothDirections=False)
         best = -1
         latitude, longitude, _ = self.session.getCoordinates()
@@ -69,7 +72,7 @@ class Trainer(object):
         return a
 
     # Wrap both for ease
-    def encounterAndCatch(self, pokemon, thresholdP=0.35, limit=5, delay=2):
+    def encounterAndCatch(self, pokemon, thresholdP=0.35, delay=2):
         # Start encounter
         encounter = self.session.encounterPokemon(pokemon)
         print encounter
@@ -77,25 +80,22 @@ class Trainer(object):
 
         # If party full
         if encounter.status == encounter.POKEMON_INVENTORY_FULL:
-            self.cleanPokemon(500)
+            self.cleanPokemon()
+            print self.session.getInventory()
 
-        if encounter.wild_pokemon.pokemon_data.pokemon_id in self.BAD_POKEMONS and encounter.wild_pokemon.pokemon_data.cp > 100:
+        if encounter.wild_pokemon.pokemon_data.pokemon_id in self.DONT_CATCH and encounter.wild_pokemon.pokemon_data.cp > 200:
             return
 
-        # Grab needed data from proto
         chances = encounter.capture_probability.capture_probability
         balls = encounter.capture_probability.pokeball_type
         balls = balls or [items.POKE_BALL, items.GREAT_BALL, items.ULTRA_BALL]
-        bag = self.session.inventory.bag
 
-        # Have we used a razz berry yet?
-        berried = False
-
-        # Make sure we aren't over limit
         count = 0
+        berried = False
 
         # Attempt catch
         while True:
+            bag = self.session.inventory.bag
             bestBall = items.UNKNOWN
             altBall = items.UNKNOWN
             # Check for balls and see if we pass
@@ -111,8 +111,8 @@ class Trainer(object):
             if bestBall == items.UNKNOWN:
                 if not berried and bag.get(items.RAZZ_BERRY, 0) > 0:
                     logging.info("Using a RAZZ_BERRY")
-                    self.session.useItemCapture(items.RAZZ_BERRY, pokemon)
                     berried = True
+                    self.session.useItemCapture(items.RAZZ_BERRY, pokemon)
                     time.sleep(delay)
                     continue
 
@@ -140,9 +140,6 @@ class Trainer(object):
 
             # Only try up to x attempts
             count += 1
-            if count >= limit:
-                logging.info("Over catch limit")
-                return None
 
     def walkTo(self, olatitude, olongitude, typeOfWalk=0, epsilon=12, step=10, delay=10):
         if step >= epsilon:
@@ -165,15 +162,8 @@ class Trainer(object):
         dLat = (latitude - olatitude) / divisions
         dLon = (longitude - olongitude) / divisions
 
-        logging.info(
-            "Walking %f meters. This will take ~%f seconds...",
-            dist,
-            dist / step
-        )
-
         # Approach at supplied rate
         steps = 1
-        print("dist is " + str(dist))
         while dist > epsilon:
             logging.debug("%f m -> %f m away", closest - dist, closest)
             latitude -= dLat
@@ -207,34 +197,29 @@ class Trainer(object):
                 latitude,
                 longitude
             )
-        if random.random() < .05:
+        if random.random() < .1:
             self.checkLevel()
-            print self.session.getInventory()
             self.setEggs()
             self.cleanInventory()
-            self.cleanPokemon(thresholdCP=500)
+            print self.session.getInventory()
         self.ignore = []
-        time.sleep(6)
-
-
+        time.sleep(3)
 
     def loopForFortsPark(self):
-        places = [(40.769162, -73.980618), (40.774557, -73.974631), (40.773103, -73.968934), (40.765469, -73.973236)]
         self.level = self.session.inventory.stats.level
         while True:
-            for lat, lon in places:
+            for lat, lon in self.CA:
                 self.cleanInventory()
-                if sum(self.session.inventory.bag.values()) < 80:
+                if sum(self.session.inventory.bag.values()) < 100:
                     print "===EXITING FROM POKEMON ONLY==="
                     break
                 self.walkTo(lat, lon, 0)
-            for lat, lon in places:
+            for lat, lon in self.CA:
                 self.cleanInventory()
-                if sum(self.session.inventory.bag.values()) > 320:
+                if sum(self.session.inventory.bag.values()) > 340:
                     print "===EXITING FROM POKEMON LOL"
                     break
                 self.walkTo(lat, lon, 1)
-
 
     def loopForWaterPokemon(self):
         places = [(40.757899, -74.005280), (40.773517, -73.994481)]
@@ -249,8 +234,6 @@ class Trainer(object):
     # we make sure we look up forts only one way on the Hilbert
     # path.
     def sortCloseForts(self):
-        # Sort nearest forts (pokestop)
-        logging.info("Sorting Nearest Forts:")
         cells = self.session.getMapObjects(bothDirections=False)
         ordered_forts = []
         for cell in cells.map_cells:
@@ -270,11 +253,9 @@ class Trainer(object):
     # Find the fort closest to user
     def findClosestFort(self):
         # Find nearest fort (pokestop)
-        logging.info("Finding Nearest Fort:")
         forts = self.sortCloseForts()
         if len(forts) > 0:
             return forts[0]
-        logging.info("No forts found..")
         return None
 
     # Walk to fort and spin
@@ -282,7 +263,6 @@ class Trainer(object):
         # No fort, demo == over
         if fort:
             details = self.session.getFortDetails(fort)
-            logging.info("Spinning the Fort \"%s\": ", details)
             self.lastFort = fort
             # Walk over
             self.walkTo(fort.latitude, fort.longitude, step=10)
@@ -299,35 +279,18 @@ class Trainer(object):
         for fort in forts:
             self.walkAndSpin(fort)
 
-    # A very brute force approach to evolving
-    def evolveAllPokemon(self):
-        inventory = self.session.inventory
-        for pokemon in inventory.party:
-            logging.info(self.session.evolvePokemon(pokemon))
-            time.sleep(5)
-
-    # You probably don't want to run this
-    def releaseAllPokemon(self):
-        inventory = self.session.inventory
-        for pokemon in inventory.party:
-            self.session.releasePokemon(pokemon)
-            time.sleep(2)
-
     # Set an egg to an incubator
     def setEggs(self):
-        logging.info("Placing eggs in incubators.")
         inventory = self.session.inventory
 
         # get empty incubators
         incubators = filter(lambda x: x.pokemon_id == 0, inventory.incubators)
-        logging.info(incubators)
 
         # get available eggs sorted by distance (i.e. favor 10 km over 5 km)
         eggs = sorted(
             filter(lambda x: not x.egg_incubator_id, inventory.eggs),
             key=lambda x: x.egg_km_walked_target - x.egg_km_walked_start,
             reverse=True)
-        logging.info(eggs)
 
         # assign the best eggs to empty incubators
         for i in range(min(len(incubators), len(eggs))):
@@ -338,18 +301,19 @@ class Trainer(object):
 
     # Understand this function before you run it.
     # Otherwise you may flush pokemon you wanted.
-    def cleanPokemon(self, thresholdCP=500):
+    def cleanPokemon(self, thresholdCP=600):
         logging.info("Cleaning out Pokemon...")
         party = self.session.inventory.party
         evolables = [pokedex.PIDGEY, pokedex.RATTATA, pokedex.ZUBAT, pokedex.NIDORAN_MALE,
-                     pokedex.NIDORAN_FEMALE, pokedex.CATERPIE, pokedex.WEEDLE, ]
+                     pokedex.NIDORAN_FEMALE, pokedex.CATERPIE, pokedex.WEEDLE, pokedex.GOLDEEN,
+                     pokedex.TENTACOOL, pokedex.PSYDUCK]
         toEvolve = {evolve: [] for evolve in evolables}
         for pokemon in party:
             # If low cp, throw away
             if pokemon.cp < thresholdCP or pokemon.pokemon_id in self.TRANSFER:
                 # It makes more sense to evolve some,
                 # than throw away
-                if pokemon.pokemon_id == self.MAGIKARP and pokemon.cp > 150:
+                if pokemon.pokemon_id == self.MAGIKARP and pokemon.cp > 180:
                     continue
                 if pokemon.pokemon_id in evolables:
                     toEvolve[pokemon.pokemon_id].append(pokemon)
@@ -362,6 +326,8 @@ class Trainer(object):
                 time.sleep(5)
 
         # Evolve those we want
+        if sum([len(a) for a in toEvolve.values()]) > 110 and items.LUCKY_EGG in self.session.inventory.bag:
+            self.session.useXpBoost()
         for evolve in evolables:
             # if we don't have any candies of that type
             # e.g. not caught that pokemon yet
@@ -381,9 +347,12 @@ class Trainer(object):
             for pokemon in pokemons:
                 logging.info("Evolving %s", pokedex[pokemon.pokemon_id])
                 logging.info(self.session.evolvePokemon(pokemon))
-                time.sleep(25)
+                time.sleep(15)
+
+        for pokemon in self.session.inventory.party:
+            if pokemon in self.TRANSFER:
+                logging.info("Releasing %s", pokedex[pokemon.pokemon_id])
                 self.session.releasePokemon(pokemon)
-                time.sleep(5)
 
     def userClean(self):
         party = self.session.inventory.party
@@ -392,22 +361,6 @@ class Trainer(object):
             release = raw_input("Release" + pokedex[pokemon.pokemon_id])
             if release == "y":
                 self.session.releasePokemon(pokemon)
-
-    # def massEvolve(self):
-    #     evolables = [pokedex.PIDGEY, pokedex.RATTATA, pokedex.ZUBAT]
-    #     toEvolve = {evolve: [] for evolve in evolables}
-    #     for evolve in evolables:
-    #         # if we don't have any candies of that type
-    #         # e.g. not caught that pokemon yet
-    #         if evolve not in self.session.inventory.candies:
-    #             continue
-    #         candies = self.session.inventory.candies[evolve]
-    #         pokemons = toEvolve[evolve]
-    #         # release for optimal candies
-    #         while candies // pokedex.evolves[evolve] < len(pokemons):
-    #             pokemon = pokemons.pop()
-    #             candies += 1
-
 
     def cleanInventory(self):
         logging.info("Cleaning out Inventory...")
@@ -423,11 +376,12 @@ class Trainer(object):
         # Limit a certain type
         limited = {
             items.RAZZ_BERRY: 25,
+            items.MAX_POTION: 20
         }
         for limit in limited:
             if limit in bag and bag[limit] > limited[limit]:
                 self.session.recycleItem(limit, bag[limit] - limited[limit])
-                time.sleep(1)
+                time.sleep(5)
 
     def checkLevel(self):
         updated_level = self.session.inventory.stats.level
