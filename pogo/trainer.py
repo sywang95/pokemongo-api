@@ -28,7 +28,8 @@ class Trainer(object):
         self.DONT_CATCH = [1, 4, 7, 15, 20, 22, 24, 25, 30, 42, 46, 95, 114, 128, 55, 73]
         self.DONT_TRANSFER = [113, 103, 149, 3, 6, 9, 31, 34, 40, 45, 59, 65, 80, 130, 131, 134, 62, 137, 143]
         self.MAGIKARP = 129
-        self.TRANSFER = [11, 14, 17, 20, 30, 33, 42, 119, 73, 55, 54, 118, 72]
+        self.TRANSFER = [11, 14, 17, 20, 30, 33, 42, 119, 73, 55, 54, 118, 72, 127, 49, 117, 22, 99, 121, 85,
+                         61]
 
     @property
     def auth(self):
@@ -75,11 +76,32 @@ class Trainer(object):
     def encounterAndCatch(self, pokemon, thresholdP=0.35, delay=2):
         # Start encounter
         encounter = self.session.encounterPokemon(pokemon)
-        print encounter
+        message = "Encountered "
+        name = pokedex[encounter.wild_pokemon.pokemon_data.pokemon_id]
+        message += name + " with "
+        cp = encounter.wild_pokemon.pokemon_data.cp
+        message += str(cp) + " CP and "
+        try:
+            atk = encounter.wild_pokemon.pokemon_data.individual_attack
+            message += str(atk) + " attack "
+        except Exception as e:
+            print e
+        try:
+            deff = encounter.wild_pokemon.pokemon_data.individual_defense
+            message += str(deff) + " defense "
+        except Exception as e:
+            pass
+        try:
+            stam = encounter.wild_pokemon.pokemon_data.individual_stamina
+            message += str(stam) + " stamina."
+        except Exception as e:
+            pass
+        print message
         self.ignore.append(encounter.wild_pokemon.encounter_id)
 
         # If party full
         if encounter.status == encounter.POKEMON_INVENTORY_FULL:
+            self.cleanPokemon()
             self.cleanPokemon()
             print self.session.getInventory()
 
@@ -95,51 +117,53 @@ class Trainer(object):
 
         # Attempt catch
         while True:
-            bag = self.session.inventory.bag
-            bestBall = items.UNKNOWN
-            altBall = items.UNKNOWN
-            # Check for balls and see if we pass
-            # wanted threshold
-            for i, ball in enumerate(balls):
-                if bag.get(ball, 0) > 0:
-                    altBall = ball
-                    if chances[i] > thresholdP:
-                        bestBall = ball
+            try:
+                bag = self.session.inventory.bag
+                bestBall = items.UNKNOWN
+                altBall = items.UNKNOWN
+                # Check for balls and see if we pass
+                # wanted threshold
+                for i, ball in enumerate(balls):
+                    if bag.get(ball, 0) > 0:
+                        altBall = ball
+                        if chances[i] > thresholdP:
+                            bestBall = ball
+                            break
+                # If we can't determine a ball, try a berry
+                # or use a lower class ball
+                if bestBall == items.UNKNOWN:
+                    if not berried and bag.get(items.RAZZ_BERRY, 0) > 0:
+                        logging.info("Using a RAZZ_BERRY")
+                        berried = True
+                        self.session.useItemCapture(items.RAZZ_BERRY, pokemon)
+                        time.sleep(delay)
+                        continue
+
+                    # if no alt ball, there are no balls
+                    elif altBall == items.UNKNOWN:
+                        print "Out of usable balls"
                         break
-            # If we can't determine a ball, try a berry
-            # or use a lower class ball
-            if bestBall == items.UNKNOWN:
-                if not berried and bag.get(items.RAZZ_BERRY, 0) > 0:
-                    logging.info("Using a RAZZ_BERRY")
-                    berried = True
-                    self.session.useItemCapture(items.RAZZ_BERRY, pokemon)
-                    time.sleep(delay)
-                    continue
+                    else:
+                        bestBall = altBall
 
-                # if no alt ball, there are no balls
-                elif altBall == items.UNKNOWN:
-                    print "Out of usable balls"
-                    return
-                else:
-                    bestBall = altBall
+                # Try to catch it!!
+                logging.info("Using a %s", items[bestBall])
+                attempt = self.session.catchPokemon(pokemon, bestBall)
+                # Success or run away
+                if attempt.status == 1:
+                    return attempt
 
-            # Try to catch it!!
-            logging.info("Using a %s", items[bestBall])
-            attempt = self.session.catchPokemon(pokemon, bestBall)
-            # Success or run away
-            if attempt.status == 1:
-                return attempt
+                # CATCH_FLEE is bad news
+                if attempt.status == 3:
+                    if count == 0:
+                        logging.info("Possible soft ban.")
+                    else:
+                        logging.info("Pokemon fleed at %dth attempt", count + 1)
+                    return attempt
 
-            # CATCH_FLEE is bad news
-            if attempt.status == 3:
-                if count == 0:
-                    logging.info("Possible soft ban.")
-                else:
-                    logging.info("Pokemon fleed at %dth attempt", count + 1)
-                return attempt
-
-            # Only try up to x attempts
-            count += 1
+                count += 1
+            except Exception as e:
+                break
 
     def walkTo(self, olatitude, olongitude, typeOfWalk=0, epsilon=12, step=10, delay=10):
         if step >= epsilon:
@@ -202,19 +226,19 @@ class Trainer(object):
             self.setEggs()
             self.cleanInventory()
             print self.session.getInventory()
-        self.ignore = []
         time.sleep(3)
+        self.ignore = []
 
     def loopForFortsPark(self):
         self.level = self.session.inventory.stats.level
         while True:
-            for lat, lon in self.CA:
+            for lat, lon in self.NY:
                 self.cleanInventory()
-                if sum(self.session.inventory.bag.values()) < 100:
+                if sum(self.session.inventory.bag.values()) < 130:
                     print "===EXITING FROM POKEMON ONLY==="
                     break
                 self.walkTo(lat, lon, 0)
-            for lat, lon in self.CA:
+            for lat, lon in self.NY:
                 self.cleanInventory()
                 if sum(self.session.inventory.bag.values()) > 340:
                     print "===EXITING FROM POKEMON LOL"
@@ -301,12 +325,13 @@ class Trainer(object):
 
     # Understand this function before you run it.
     # Otherwise you may flush pokemon you wanted.
-    def cleanPokemon(self, thresholdCP=600):
+    def cleanPokemon(self, thresholdCP=700):
         logging.info("Cleaning out Pokemon...")
         party = self.session.inventory.party
         evolables = [pokedex.PIDGEY, pokedex.RATTATA, pokedex.ZUBAT, pokedex.NIDORAN_MALE,
                      pokedex.NIDORAN_FEMALE, pokedex.CATERPIE, pokedex.WEEDLE, pokedex.GOLDEEN,
-                     pokedex.TENTACOOL, pokedex.PSYDUCK]
+                     pokedex.TENTACOOL, pokedex.PSYDUCK, pokedex.VENONAT, pokedex.KRABBY, pokedex.SPEAROW,
+                     pokedex.STARYU, pokedex.BELLSPROUT, pokedex.ODDISH, pokedex.POLIWAG, pokedex.VENONAT]
         toEvolve = {evolve: [] for evolve in evolables}
         for pokemon in party:
             # If low cp, throw away
@@ -323,11 +348,10 @@ class Trainer(object):
                 # Get rid of low CP, low evolve value
                 logging.info("Releasing %s", pokedex[pokemon.pokemon_id])
                 self.session.releasePokemon(pokemon)
-                time.sleep(5)
+                time.sleep(2)
 
+        count = sum([len(a) for a in toEvolve.values()])
         # Evolve those we want
-        if sum([len(a) for a in toEvolve.values()]) > 110 and items.LUCKY_EGG in self.session.inventory.bag:
-            self.session.useXpBoost()
         for evolve in evolables:
             # if we don't have any candies of that type
             # e.g. not caught that pokemon yet
@@ -342,24 +366,50 @@ class Trainer(object):
                 self.session.releasePokemon(pokemon)
                 time.sleep(1)
                 candies += 1
-
+                count -= 1
+        print count
+        if count > 100:
+            if items.LUCKY_EGG in self.session.inventory.bag:
+                self.session.useXpBoost()
             # evolve remainder
-            for pokemon in pokemons:
-                logging.info("Evolving %s", pokedex[pokemon.pokemon_id])
-                logging.info(self.session.evolvePokemon(pokemon))
-                time.sleep(15)
+            for evolve in evolables:
+                try:
+                    candies = self.session.inventory.candies[evolve]
+                    pokemons = toEvolve[evolve]
+                    for pokemon in pokemons:
+                        logging.info("Evolving %s", pokedex[pokemon.pokemon_id])
+                        logging.info(self.session.evolvePokemon(pokemon))
+                        time.sleep(15)
+                except Exception as e:
+                    pass
 
-        for pokemon in self.session.inventory.party:
-            if pokemon in self.TRANSFER:
-                logging.info("Releasing %s", pokedex[pokemon.pokemon_id])
-                self.session.releasePokemon(pokemon)
 
     def userClean(self):
         party = self.session.inventory.party
         for pokemon in party:
-            print pokemon
+            message = "Want to release "
+            poke = pokedex[pokemon.pokemon_id]
+            message += poke + " with "
+            cp = pokemon.cp
+            message += str(cp) + " CP and "
+            try:
+                atk = pokemon.individual_attack
+                message += str(atk) + " attack "
+            except Exception as e:
+                print e
+            try:
+                deff = pokemon.individual_defense
+                message += str(deff) + " defense "
+            except Exception as e:
+                print e 
+            try:
+                stam = pokemon.individual_stamina
+                message += str(stam) + " stamina."
+            except Exception as e:
+                print e
+            print message
             release = raw_input("Release" + pokedex[pokemon.pokemon_id])
-            if release == "y":
+            if release == "]":
                 self.session.releasePokemon(pokemon)
 
     def cleanInventory(self):
@@ -376,7 +426,8 @@ class Trainer(object):
         # Limit a certain type
         limited = {
             items.RAZZ_BERRY: 25,
-            items.MAX_POTION: 20
+            items.MAX_POTION: 20,
+            items.MAX_REVIVE: 25,
         }
         for limit in limited:
             if limit in bag and bag[limit] > limited[limit]:
